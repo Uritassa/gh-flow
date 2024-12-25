@@ -1,0 +1,50 @@
+name: CI/CD release
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Select environment target'
+        required: true
+        type: choice
+        options:
+          - prod        
+  release:
+    types: [created]
+
+jobs:
+  iac:
+    uses: ./.github/workflows/iac.yaml
+    permissions:
+      id-token: write
+      contents: read
+    with:
+      environment: 'prod' 
+      working_directory: ./iac/prod/
+      resource_name: ${{ github.event.repository.name }}
+      terraform_version: 1.9.8
+      terragrunt_version: 0.68.10
+    secrets: inherit
+  ci:
+    needs: iac
+    uses: ./.github/workflows/ci.yaml
+    permissions:
+      id-token: write
+      contents: read
+    with:
+        environment: 'prod' 
+        working_directory: ./ 
+        ecr_repository: ${{ github.event.repository.name }}
+        image_version: ${{ github.event.release.tag_name }}
+    secrets: inherit
+  cd:          
+    needs: [ci]
+    uses: ./.github/workflows/cd.yaml
+    permissions:
+      id-token: write
+      contents: write
+    with:
+        environment: 'prod' 
+        working_directory: ./kubernetes
+        image: ${{ needs.ci.outputs.image_output }}
+    secrets: inherit

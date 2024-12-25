@@ -1,0 +1,54 @@
+name: dev workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Select environment target'
+        required: true
+        type: choice
+        options:
+          - dev
+
+  push:
+    branches: 
+      - dev
+    paths-ignore:
+      - 'kubernetes/**'
+
+jobs:
+  iac:
+    uses: ./.github/workflows/iac.yaml
+    permissions:
+      id-token: write
+      contents: read
+    with:
+      environment: ${{ github.event.inputs.environment || 'dev' }}
+      working_directory: ./iac/dev/
+      resource_name: ${{ github.event.repository.name }}-${{ github.event.inputs.environment || 'dev' }}-demo
+      terraform_version: 1.9.8
+      terragrunt_version: 0.68.10
+    secrets: inherit  
+  ci:
+    needs: iac
+    uses: ./.github/workflows/ci.yaml
+    permissions:
+      id-token: write
+      contents: read
+    with:
+        environment: ${{ github.event.inputs.environment || 'dev' }}
+        working_directory: ./ 
+        ecr_repository: ${{ github.event.repository.name }}-${{ github.event.inputs.environment || 'dev' }}
+        image_version: ${{ github.run_id }}
+    secrets: inherit
+  cd:          
+    needs: [ci]
+    uses: ./.github/workflows/cd.yaml
+    permissions:
+      id-token: write
+      contents: write
+    with:
+        environment: ${{ github.event.inputs.environment || 'dev' }}
+        working_directory: ./kubernetes
+        image: ${{ needs.ci.outputs.image_output }}
+    secrets: inherit
